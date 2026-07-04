@@ -50,7 +50,6 @@ func (r *walletRepository) UpdateBalance(ctx context.Context, id uuid.UUID, amou
     var wallet models.Wallet
 
     err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-        // Блокируем строку для предотвращения race conditions
         err := tx.Raw(`
             SELECT id, balance 
             FROM wallets 
@@ -65,13 +64,11 @@ func (r *walletRepository) UpdateBalance(ctx context.Context, id uuid.UUID, amou
             return err
         }
 
-        // Проверяем достаточно ли средств
         newBalance := wallet.Balance + amount
         if newBalance < 0 {
             return ErrInsufficientBalance
         }
 
-        // Обновляем баланс
         result := tx.Exec(`
             UPDATE wallets 
             SET balance = ?, updated_at = NOW() 

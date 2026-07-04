@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>wallet_microservice - API Documentation</title>
+    <style>
+        body { margin: 0; padding: 0; }
+        #opencollection-container { width: 100vw; height: 100vh; }
+    </style>
+    <link rel="stylesheet" href="https://cdn.opencollection.com/docs.css">
+    <script src="https://cdn.opencollection.com/docs.js"></script>
+</head>
+<body>
+    <div id="opencollection-container"></div>
+    <script>
+        const collectionData = "opencollection: 1.0.0\ninfo:\n  name: wallet_microservice\nconfig:\n  proxy:\n    inherit: true\n    config:\n      protocol: http\n      hostname: ''\n      port: ''\n      auth:\n        username: ''\n        password: ''\n      bypassProxy: ''\nitems:\n  - info:\n      name: Create wallet\n      type: http\n      seq: 1\n    http:\n      method: POST\n      url: '{{host}}/api/v1/wallets'\n      body:\n        type: json\n        data: |-\n          {\n          }\n      auth: inherit\n    runtime:\n      variables:\n        - name: host\n          value: http://localhost:9999\n    settings:\n      encodeUrl: true\n      timeout: 0\n      followRedirects: true\n      maxRedirects: 5\n  - info:\n      name: get wallet\n      type: http\n      seq: 2\n    http:\n      method: GET\n      url: '{{host}}/api/v1/wallets/{{wallet_uuid}}'\n      auth: inherit\n    settings:\n      encodeUrl: true\n      timeout: 0\n      followRedirects: true\n      maxRedirects: 5\n  - info:\n      name: wallet transaction DEPOSIT\n      type: http\n      seq: 3\n    http:\n      method: POST\n      url: '{{host}}/api/v1/wallets/transaction'\n      body:\n        type: json\n        data: |-\n          {\n              \"walletId\": \"{{wallet_uuid}}\",\n              \"operationType\": \"DEPOSIT\",\n              \"amount\": 1000\n          }\n      auth: inherit\n    settings:\n      encodeUrl: true\n      timeout: 0\n      followRedirects: true\n      maxRedirects: 5\n  - info:\n      name: wallet transaction WITHDRAW\n      type: http\n      seq: 4\n    http:\n      method: POST\n      url: '{{host}}/api/v1/wallets/transaction'\n      body:\n        type: json\n        data: |-\n          {\n              \"walletId\": \"{{wallet_uuid}}\",\n              \"operationType\": \"WITHDRAW\",\n              \"amount\": 1000\n          }\n      auth: inherit\n    settings:\n      encodeUrl: true\n      timeout: 0\n      followRedirects: true\n      maxRedirects: 5\nrequest:\n  variables:\n    - name: host\n      value: http://localhost:9999\n    - name: wallet_uuid\n      value: d0e9801d-c133-4c6c-a09b-82547bd4d528\nbundled: true\nextensions:\n  bruno:\n    ignore:\n      - node_modules\n      - .git\n    exportedAt: '2026-07-04T09:45:25.444Z'\n    exportedUsing: Bruno/3.2.2\n";
+        new window.OpenCollection({
+            target: document.getElementById('opencollection-container'),
+            opencollection: collectionData,
+            theme: 'light'
+        });
+    </script>
+</body>
+</html>

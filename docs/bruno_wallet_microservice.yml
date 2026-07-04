@@ -1,0 +1,106 @@
+opencollection: 1.0.0
+info:
+  name: wallet_microservice
+config:
+  proxy:
+    inherit: true
+    config:
+      protocol: http
+      hostname: ''
+      port: ''
+      auth:
+        username: ''
+        password: ''
+      bypassProxy: ''
+items:
+  - info:
+      name: Create wallet
+      type: http
+      seq: 1
+    http:
+      method: POST
+      url: '{{host}}/api/v1/wallets'
+      body:
+        type: json
+        data: |-
+          {
+          }
+      auth: inherit
+    runtime:
+      variables:
+        - name: host
+          value: http://localhost:9999
+    settings:
+      encodeUrl: true
+      timeout: 0
+      followRedirects: true
+      maxRedirects: 5
+  - info:
+      name: get wallet
+      type: http
+      seq: 2
+    http:
+      method: GET
+      url: '{{host}}/api/v1/wallets/{{wallet_uuid}}'
+      auth: inherit
+    settings:
+      encodeUrl: true
+      timeout: 0
+      followRedirects: true
+      maxRedirects: 5
+  - info:
+      name: wallet transaction DEPOSIT
+      type: http
+      seq: 3
+    http:
+      method: POST
+      url: '{{host}}/api/v1/wallets/transaction'
+      body:
+        type: json
+        data: |-
+          {
+              "walletId": "{{wallet_uuid}}",
+              "operationType": "DEPOSIT",
+              "amount": 1000
+          }
+      auth: inherit
+    settings:
+      encodeUrl: true
+      timeout: 0
+      followRedirects: true
+      maxRedirects: 5
+  - info:
+      name: wallet transaction WITHDRAW
+      type: http
+      seq: 4
+    http:
+      method: POST
+      url: '{{host}}/api/v1/wallets/transaction'
+      body:
+        type: json
+        data: |-
+          {
+              "walletId": "{{wallet_uuid}}",
+              "operationType": "WITHDRAW",
+              "amount": 1000
+          }
+      auth: inherit
+    settings:
+      encodeUrl: true
+      timeout: 0
+      followRedirects: true
+      maxRedirects: 5
+request:
+  variables:
+    - name: host
+      value: http://localhost:9999
+    - name: wallet_uuid
+      value: d0e9801d-c133-4c6c-a09b-82547bd4d528
+bundled: true
+extensions:
+  bruno:
+    ignore:
+      - node_modules
+      - .git
+    exportedAt: '2026-07-04T10:01:50.835Z'
+    exportedUsing: Bruno
