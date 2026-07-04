@@ -15,7 +15,7 @@
 </p>
 
 <pre>
-1000 RPS TEST
+1000 RPS TEST (FOR UPDATE)
 Target:     1000 req/s
 Actual:     996.50 req/s
 Success:    100.00%
@@ -37,7 +37,7 @@ Duration:   1.56 s
 </p>
 
 <pre>
-1000 RPS TEST
+1000 RPS TEST (FOR UPDATE)
 Target:     1000 req/s
 Actual:     694 req/s
 Success:    100.00%
