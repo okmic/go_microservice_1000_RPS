@@ -1,84 +1,117 @@
-package handlers
+package service
 
 import (
-    "net/http"
+    "context"
+    "errors"
+    "sync"
 
-    "github.com/gin-gonic/gin"
     "github.com/google/uuid"
     "go.uber.org/zap"
-    "wallet/internal/models"
-    "wallet/internal/service"
+    "wallet/internal/models"     
+    "wallet/internal/repository"
 )
 
-type WalletHandler struct {
-    walletService service.WalletService
-    logger        *zap.Logger
+var (
+    ErrWalletNotFound      = errors.New("wallet not found")
+    ErrInsufficientBalance = errors.New("insufficient balance")
+)
+
+type WalletService interface {
+    ProcessTransaction(ctx context.Context, req *models.WalletRequest) (*models.WalletResponse, error)
+    GetBalance(ctx context.Context, walletID uuid.UUID) (int64, error)
+    CreateWallet(ctx context.Context) (*models.WalletResponse, error)
 }
 
-func NewWalletHandler(walletService service.WalletService, logger *zap.Logger) *WalletHandler {
-    return &WalletHandler{
-        walletService: walletService,
-        logger:        logger,
+type walletService struct {
+    walletRepo  repository.WalletRepository
+    logger      *zap.Logger
+    mu          *sync.RWMutex
+    walletCache map[uuid.UUID]int64
+}
+
+func NewWalletService(walletRepo repository.WalletRepository, logger *zap.Logger) WalletService {
+    return &walletService{
+        walletRepo:  walletRepo,
+        logger:      logger,
+        mu:          &sync.RWMutex{},
+        walletCache: make(map[uuid.UUID]int64),
     }
 }
 
-func (h *WalletHandler) ProcessTransaction(c *gin.Context) {
-    var req models.WalletRequest
-    if err := c.ShouldBindJSON(&req); err != nil {
-        h.logger.Error("invalid request", zap.Error(err))
-        c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-        return
+func (s *walletService) ProcessTransaction(ctx context.Context, req *models.WalletRequest) (*models.WalletResponse, error) {
+    var amount int64
+    if req.OperationType == models.Deposit {
+        amount = req.Amount
+    } else {
+        amount = -req.Amount
     }
 
-    response, err := h.walletService.ProcessTransaction(c.Request.Context(), &req)
+    wallet, err := s.walletRepo.UpdateBalance(ctx, req.WalletID, amount)
     if err != nil {
-        h.logger.Error("failed to process transaction", zap.Error(err))
-        switch err {
-        case service.ErrWalletNotFound:
-            c.JSON(http.StatusNotFound, gin.H{"error": "wallet not found"})
-        case service.ErrInsufficientBalance:
-            c.JSON(http.StatusBadRequest, gin.H{"error": "insufficient balance"})
-        default:
-            c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
-        }
-        return
+        s.logger.Error("failed to update balance",
+            zap.String("wallet_id", req.WalletID.String()),
+            zap.Int64("amount", amount),
+            zap.Error(err),
+        )
+        return nil, err
     }
 
-    c.JSON(http.StatusOK, response)
+    transaction := &models.Transaction{
+        WalletID: req.WalletID,
+        Type:     string(req.OperationType),
+        Amount:   req.Amount,
+        Balance:  wallet.Balance,
+    }
+
+    if err := s.walletRepo.AddTransaction(ctx, transaction); err != nil {
+        s.logger.Error("failed to record transaction",
+            zap.String("wallet_id", req.WalletID.String()),
+            zap.Error(err),
+        )
+    }
+
+    s.mu.Lock()
+    s.walletCache[req.WalletID] = wallet.Balance
+    s.mu.Unlock()
+
+    return &models.WalletResponse{
+        WalletID: req.WalletID,
+        Balance:  wallet.Balance,
+    }, nil
 }
 
-func (h *WalletHandler) GetBalance(c *gin.Context) {
-    walletIDStr := c.Param("walletId")
-    walletID, err := uuid.Parse(walletIDStr)
+func (s *walletService) GetBalance(ctx context.Context, walletID uuid.UUID) (int64, error) {
+    s.mu.RLock()
+    if balance, ok := s.walletCache[walletID]; ok {
+        s.mu.RUnlock()
+        return balance, nil
+    }
+    s.mu.RUnlock()
+
+    balance, err := s.walletRepo.GetBalance(ctx, walletID)
     if err != nil {
-        c.JSON(http.StatusBadRequest, gin.H{"error": "invalid wallet id"})
-        return
+        return 0, err
     }
 
-    balance, err := h.walletService.GetBalance(c.Request.Context(), walletID)
-    if err != nil {
-        h.logger.Error("failed to get balance", zap.Error(err))
-        if err == service.ErrWalletNotFound {
-            c.JSON(http.StatusNotFound, gin.H{"error": "wallet not found"})
-        } else {
-            c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
-        }
-        return
-    }
+    s.mu.Lock()
+    s.walletCache[walletID] = balance
+    s.mu.Unlock()
 
-    c.JSON(http.StatusOK, gin.H{
-        "walletId": walletID,
-        "balance":  balance,
-    })
+    return balance, nil
 }
 
-func (h *WalletHandler) CreateWallet(c *gin.Context) {
-    response, err := h.walletService.CreateWallet(c.Request.Context())
-    if err != nil {
-        h.logger.Error("failed to create wallet", zap.Error(err))
-        c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
-        return
+func (s *walletService) CreateWallet(ctx context.Context) (*models.WalletResponse, error) {
+    wallet := &models.Wallet{
+        Balance: 0,
     }
 
-    c.JSON(http.StatusCreated, response)
+    if err := s.walletRepo.Create(ctx, wallet); err != nil {
+        s.logger.Error("failed to create wallet", zap.Error(err))
+        return nil, err
+    }
+
+    return &models.WalletResponse{
+        WalletID: wallet.ID,
+        Balance:  wallet.Balance,
+    }, nil
 }

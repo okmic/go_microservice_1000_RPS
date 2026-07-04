@@ -50,22 +50,36 @@ func (r *walletRepository) UpdateBalance(ctx context.Context, id uuid.UUID, amou
     var wallet models.Wallet
 
     err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-        if err := tx.Clauses(gorm.Locking{Strength: "UPDATE"}).
-            Where("id = ?", id).
-            First(&wallet).Error; err != nil {
+        // Блокируем строку для предотвращения race conditions
+        err := tx.Raw(`
+            SELECT id, balance 
+            FROM wallets 
+            WHERE id = ? 
+            FOR UPDATE
+        `, id).Scan(&wallet).Error
+        
+        if err != nil {
             if errors.Is(err, gorm.ErrRecordNotFound) {
                 return ErrWalletNotFound
             }
             return err
         }
 
+        // Проверяем достаточно ли средств
         newBalance := wallet.Balance + amount
         if newBalance < 0 {
             return ErrInsufficientBalance
         }
 
-        if err := tx.Model(&wallet).Update("balance", newBalance).Error; err != nil {
-            return err
+        // Обновляем баланс
+        result := tx.Exec(`
+            UPDATE wallets 
+            SET balance = ?, updated_at = NOW() 
+            WHERE id = ?
+        `, newBalance, id)
+
+        if result.Error != nil {
+            return result.Error
         }
 
         wallet.Balance = newBalance
