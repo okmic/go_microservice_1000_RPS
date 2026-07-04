@@ -1,7 +1,5 @@
 <h1 align="center">Go Microservice · 1000 RPS</h1>
 
-<hr />
-
 <p>
   RESTful сервис управления кошельками на Go с использованием Gin, GORM и PostgreSQL.
   Основной фокус — высокая производительность и конкурентная безопасность.
@@ -11,6 +9,10 @@
 <hr />
 
 <h2>Performance</h2>
+
+<p>
+  <b>Локальный запуск:</b>
+</p>
 
 <pre>
 1000 RPS TEST
@@ -29,6 +31,31 @@ Success:    100.00%
 RPS:        641
 Duration:   1.56 s
 </pre>
+
+<p>
+  <b>В Docker-контейнере:</b>
+</p>
+
+<pre>
+1000 RPS TEST
+Target:     1000 req/s
+Actual:     694 req/s
+Success:    100.00%
+Latency:    1.07 ms
+Duration:   1.00 s
+Requests:   694
+
+HIGH CONCURRENCY
+Workers:    100
+Requests:   1000
+Success:    100.00%
+RPS:        899
+Duration:   1.11 s
+</pre>
+
+<p>
+  <i>Снижение производительности в Docker связано с ограничениями CPU и сетевыми накладными расходами между контейнерами. Для максимальной производительности рекомендуется запускать приложение локально.</i>
+</p>
 
 <hr />
 
@@ -53,7 +80,7 @@ Duration:   1.56 s
 
 <h3>Performance tests</h3>
 <ul>
-  <li>1000 RPS — 996.50 req/s, 100% успешных</li>
+  <li>1000 RPS — 996.50 req/s, 100% успешных (локально)</li>
   <li>High concurrency — 100 воркеров, 1000 запросов</li>
   <li>Проверка целостности баланса после нагрузки</li>
 </ul>

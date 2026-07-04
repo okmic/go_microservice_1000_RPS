@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"sync"
+	"os"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -15,7 +16,14 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-const baseURL = "http://localhost:9999"
+var baseURL = getBaseURL()
+
+func getBaseURL() string {
+    if url := os.Getenv("BASE_URL"); url != "" {
+        return url
+    }
+    return "http://localhost:9999"
+}
 
 type WalletResponse struct {
 	WalletID string  `json:"walletId"`
