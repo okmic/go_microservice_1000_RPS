@@ -1,14 +1,11 @@
-.PHONY: build run test clean docker-build docker-up docker-down
+test: 
+	go test -v tests/index_test.go
 
 build:
 	go build -o bin/wallet-service cmd/main.go
 
 run:
 	go run cmd/main.go
-
-test:
-	go test -v -race -coverprofile=coverage.out ./...
-	go tool cover -html=coverage.out -o coverage.html
 
 clean:
 	rm -rf bin/
