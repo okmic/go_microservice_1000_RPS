@@ -47,15 +47,13 @@ func (r *walletRepository) Create(ctx context.Context, wallet *models.Wallet) er
 }
 
 func (r *walletRepository) UpdateBalance(ctx context.Context, id uuid.UUID, amount int64) (*models.Wallet, error) {
-    var wallet models.Wallet
-
+    var newBalance int64
+    
     err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+        var currentBalance int64
         err := tx.Raw(`
-            SELECT id, balance 
-            FROM wallets 
-            WHERE id = ? 
-            FOR UPDATE
-        `, id).Scan(&wallet).Error
+            SELECT balance FROM wallets WHERE id = ? FOR UPDATE
+        `, id).Scan(&currentBalance).Error
         
         if err != nil {
             if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -63,31 +61,34 @@ func (r *walletRepository) UpdateBalance(ctx context.Context, id uuid.UUID, amou
             }
             return err
         }
-
-        newBalance := wallet.Balance + amount
+        
+        newBalance = currentBalance + amount
+        
         if newBalance < 0 {
             return ErrInsufficientBalance
         }
-
+        
         result := tx.Exec(`
             UPDATE wallets 
             SET balance = ?, updated_at = NOW() 
             WHERE id = ?
         `, newBalance, id)
-
+        
         if result.Error != nil {
             return result.Error
         }
-
-        wallet.Balance = newBalance
+        
         return nil
     })
-
+    
     if err != nil {
         return nil, err
     }
-
-    return &wallet, nil
+    
+    return &models.Wallet{
+        ID:      id,
+        Balance: newBalance,
+    }, nil
 }
 
 func (r *walletRepository) AddTransaction(ctx context.Context, tx *models.Transaction) error {

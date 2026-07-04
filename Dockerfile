@@ -5,13 +5,14 @@ WORKDIR /app
 RUN apk add --no-cache git
 
 COPY go.mod go.sum ./
-
 RUN go mod download
 
 COPY . .
 
-RUN go build -o wallet-service cmd/main.go
+RUN ls -la
 
-EXPOSE 8080
+RUN go build -v -o wallet-service cmd/main.go
+
+EXPOSE 9999
 
 CMD ["./wallet-service"]

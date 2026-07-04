@@ -7,10 +7,6 @@ build:
 run:
 	go run cmd/main.go
 
-clean:
-	rm -rf bin/
-	rm -f coverage.out coverage.html
-
 docker-build:
 	docker-compose build
 
@@ -25,6 +21,3 @@ docker-logs:
 
 migrate:
 	docker-compose exec postgres psql -U postgres -d walletdb -f /docker-entrypoint-initdb.d/001_create_wallets_table.sql
-
-benchmark:
-	hey -n 1000 -c 10 -m POST -H "Content-Type: application/json" -d '{"walletId":"$(WALLET_ID)","operationType":"DEPOSIT","amount":100}' http://localhost:8080/api/v1/wallets/transaction

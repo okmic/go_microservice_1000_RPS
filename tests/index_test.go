@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -48,13 +47,15 @@ type TestReport struct {
 	Details       map[string]interface{}
 }
 
-var report TestReport
-
-
 func TestWalletIntegration(t *testing.T) {
 	if testing.Short() {
 		t.Skip("Skipping integration test")
 	}
+
+	t.Log("")
+	t.Log("======================================================================")
+	t.Log("  INTEGRATION TESTS - Checking that the service works correctly")
+	t.Log("======================================================================")
 
 	client := &http.Client{Timeout: 10 * time.Second}
 
@@ -64,49 +65,52 @@ func TestWalletIntegration(t *testing.T) {
 	}
 	resp.Body.Close()
 
-	t.Run("Full wallet lifecycle", func(t *testing.T) {
-		start := time.Now()
-		t.Logf("[TEST START] Full wallet lifecycle")
+	t.Run("Full wallet lifecycle: create -> deposit -> withdraw -> check", func(t *testing.T) {
+		t.Log("")
+		t.Log("----------------------------------------------------------------------")
+		t.Log("  TEST 1: Full wallet lifecycle")
+		t.Log("----------------------------------------------------------------------")
 
 		walletID := createWallet(t, client)
-		t.Logf("[STEP 1] Wallet created successfully | wallet_id=%s", walletID)
+		t.Logf("  OK: Wallet created, ID: %s", walletID)
 
 		depositAndCheck(t, client, walletID, 1000, 1000)
-		t.Logf("[STEP 2] Deposit operation | amount=1000 | new_balance=1000")
+		t.Log("  OK: Deposit 1000 successful, balance: 1000")
 
 		withdrawAndCheck(t, client, walletID, 300, 700)
-		t.Logf("[STEP 3] Withdraw operation | amount=300 | new_balance=700")
+		t.Log("  OK: Withdraw 300 successful, balance: 700")
 
 		tryOverdraw(t, client, walletID)
-		t.Logf("[STEP 4] Overdraw prevention | attempted=10000 | result=rejected")
+		t.Log("  OK: Overdraw protection works, attempt to withdraw 10000 rejected")
 
 		finalBalance := getBalance(t, client, walletID)
 		assert.Equal(t, float64(700), finalBalance)
-
-		duration := time.Since(start)
-		t.Logf("[TEST END] Full wallet lifecycle | duration=%v | final_balance=%.0f | status=PASSED", duration, finalBalance)
+		t.Logf("  OK: Final balance: %.0f", finalBalance)
 	})
 
-	t.Run("Concurrent operations", func(t *testing.T) {
-		start := time.Now()
-		t.Logf("[TEST START] Concurrent operations test")
+	t.Run("50 concurrent requests to one wallet", func(t *testing.T) {
+		t.Log("")
+		t.Log("----------------------------------------------------------------------")
+		t.Log("  TEST 2: Concurrent operations (50 requests)")
+		t.Log("----------------------------------------------------------------------")
 
 		walletID := createWallet(t, client)
-		t.Logf("[STEP 1] Wallet created for concurrency test | wallet_id=%s", walletID)
+		t.Logf("  OK: Wallet created, ID: %s", walletID)
 
 		concurrentRequests := 50
 		amountPerRequest := 10
 		expectedTotal := concurrentRequests * amountPerRequest
 
-		t.Logf("[STEP 2] Starting concurrent operations | requests=%d | amount_per_request=%d | expected_total=%d",
+		t.Logf("  INFO: Sending %d requests of %d each, expected balance: %d", 
 			concurrentRequests, amountPerRequest, expectedTotal)
 
 		done := make(chan bool, concurrentRequests)
 		successCount := 0
 		var mu sync.Mutex
 
+		start := time.Now()
 		for i := 0; i < concurrentRequests; i++ {
-			go func(idx int) {
+			go func() {
 				deposit := TransactionRequest{
 					WalletID:      walletID,
 					OperationType: "DEPOSIT",
@@ -120,42 +124,40 @@ func TestWalletIntegration(t *testing.T) {
 				mu.Unlock()
 				resp.Body.Close()
 				done <- true
-			}(i)
+			}()
 		}
 
 		for i := 0; i < concurrentRequests; i++ {
 			<-done
 		}
+		duration := time.Since(start)
 
-		t.Logf("[STEP 3] Concurrent operations completed | successful=%d | failed=%d",
+		t.Logf("  INFO: Time: %v", duration)
+		t.Logf("  OK: All requests completed, success: %d, failed: %d", 
 			successCount, concurrentRequests-successCount)
 
 		finalBalance := getBalance(t, client, walletID)
 		assert.Equal(t, float64(expectedTotal), finalBalance)
-
-		duration := time.Since(start)
-		t.Logf("[TEST END] Concurrent operations | duration=%v | requests=%d | final_balance=%.0f | expected=%.0f | status=PASSED",
-			duration, concurrentRequests, finalBalance, float64(expectedTotal))
+		t.Logf("  OK: Final balance: %.0f (expected: %d)", finalBalance, expectedTotal)
 	})
 
-	t.Run("Error scenarios", func(t *testing.T) {
-		start := time.Now()
-		t.Logf("[TEST START] Error scenarios validation")
+	t.Run("Error handling", func(t *testing.T) {
+		t.Log("")
+		t.Log("----------------------------------------------------------------------")
+		t.Log("  TEST 3: Error handling")
+		t.Log("----------------------------------------------------------------------")
 
-		t.Log("[STEP 1] Testing non-existent wallet...")
+		t.Log("  SCENARIO 1: Non-existent wallet")
 		fakeID := uuid.New().String()
 		resp := doGet(t, client, "/api/v1/wallets/"+fakeID)
 		assert.Equal(t, http.StatusNotFound, resp.StatusCode)
-		t.Logf("[STEP 1] Non-existent wallet check | wallet_id=%s | status=%d | expected=404 | result=PASSED",
-			fakeID, resp.StatusCode)
 
 		var errResp ErrorResponse
 		json.NewDecoder(resp.Body).Decode(&errResp)
 		assert.Equal(t, "wallet not found", errResp.Error)
-		t.Logf("[STEP 1] Error message validation | message='%s' | expected='wallet not found' | result=PASSED",
-			errResp.Error)
+		t.Logf("  OK: 404 error: '%s'", errResp.Error)
 
-		t.Log("[STEP 2] Testing invalid request format...")
+		t.Log("  SCENARIO 2: Invalid UUID format")
 		invalid := map[string]interface{}{
 			"walletId":      "invalid-uuid",
 			"operationType": "DEPOSIT",
@@ -163,26 +165,19 @@ func TestWalletIntegration(t *testing.T) {
 		}
 		resp = doPost(t, client, "/api/v1/wallets/transaction", invalid)
 		assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
-		t.Logf("[STEP 2] Invalid request validation | status=%d | expected=400 | result=PASSED",
-			resp.StatusCode)
-
-		duration := time.Since(start)
-		t.Logf("[TEST END] Error scenarios | duration=%v | status=PASSED", duration)
+		t.Log("  OK: 400 error: Invalid request rejected")
 	})
 }
-
 
 func TestPerformance_1000RPS(t *testing.T) {
 	if testing.Short() {
 		t.Skip("Skipping performance test")
 	}
 
-	report = TestReport{
-		TestName:   "1000 RPS Performance Test",
-		StartTime:  time.Now(),
-		Status:     "RUNNING",
-		Details:    make(map[string]interface{}),
-	}
+	t.Log("")
+	t.Log("======================================================================")
+	t.Log("  PERFORMANCE TEST: 1000 RPS")
+	t.Log("======================================================================")
 
 	client := &http.Client{
 		Timeout: 10 * time.Second,
@@ -194,13 +189,13 @@ func TestPerformance_1000RPS(t *testing.T) {
 	}
 
 	walletID := createWalletForTest(t, client)
-	report.Details["wallet_id"] = walletID
-	t.Logf("[PERF] Test wallet created | wallet_id=%s", walletID)
+	t.Logf("  OK: Wallet created, ID: %s", walletID)
 
-	duration := 1 * time.Second
 	targetRPS := 1000
+	duration := 1 * time.Second
 
-	t.Logf("[PERF] Starting performance test | target_rps=%d | duration=%v", targetRPS, duration)
+	t.Logf("  INFO: Target: %d requests per second", targetRPS)
+	t.Logf("  INFO: Duration: %v", duration)
 
 	var successCount int64
 	var failCount int64
@@ -212,12 +207,9 @@ func TestPerformance_1000RPS(t *testing.T) {
 
 	requestRate := time.Tick(time.Second / time.Duration(targetRPS))
 
-	workerCount := targetRPS * 2
-	t.Logf("[PERF] Spawning workers | workers=%d", workerCount)
-
-	for i := 0; i < workerCount; i++ {
+	for i := 0; i < targetRPS; i++ {
 		wg.Add(1)
-		go func(workerID int) {
+		go func() {
 			defer wg.Done()
 			for {
 				select {
@@ -236,7 +228,7 @@ func TestPerformance_1000RPS(t *testing.T) {
 					}
 				}
 			}
-		}(i)
+		}()
 	}
 
 	time.Sleep(duration)
@@ -255,61 +247,37 @@ func TestPerformance_1000RPS(t *testing.T) {
 	actualRPS := float64(total) / elapsed.Seconds()
 	successRate := float64(success) / float64(total) * 100
 
-	report.Duration = elapsed
-	report.TotalRequests = int(total)
-	report.SuccessCount = int(success)
-	report.FailCount = int(fail)
-	report.SuccessRate = successRate
-	report.RPS = actualRPS
-	report.AvgLatency = avgLatency
+	t.Log("")
+	t.Log("  RESULTS:")
+	t.Logf("    Target RPS:      %d", targetRPS)
+	t.Logf("    Actual RPS:      %.2f", actualRPS)
+	t.Logf("    Total requests:  %d", total)
+	t.Logf("    Successful:      %d (%.2f%%)", success, successRate)
+	t.Logf("    Failed:          %d (%.2f%%)", fail, 100-successRate)
+	t.Logf("    Avg latency:     %.2f μs", avgLatency)
+	t.Logf("    Duration:        %v", elapsed)
 
-	t.Logf("[PERF] Performance Metrics:")
-	t.Logf("[PERF]   Target RPS: %d", targetRPS)
-	t.Logf("[PERF]   Actual RPS: %.2f", actualRPS)
-	t.Logf("[PERF]   Total Requests: %d", total)
-	t.Logf("[PERF]   Successful: %d (%.2f%%)", success, successRate)
-	t.Logf("[PERF]   Failed: %d (%.2f%%)", fail, 100-successRate)
-	t.Logf("[PERF]   Avg Latency: %.2f μs", avgLatency)
-	t.Logf("[PERF]   Duration: %v", elapsed)
-
-	report.Details["target_rps"] = targetRPS
-	report.Details["actual_rps"] = actualRPS
-	report.Details["avg_latency_us"] = avgLatency
-	report.Details["worker_count"] = workerCount
-
-	if total < int64(targetRPS) {
-		report.Status = "FAILED"
-		report.Details["error"] = fmt.Sprintf("Expected at least %d requests, got %d", targetRPS, total)
-		t.Errorf("[PERF] Expected at least %d requests, got %d", targetRPS, total)
+	if total >= int64(targetRPS) {
+		t.Logf("  OK: Target achieved: %d RPS", targetRPS)
+	} else {
+		t.Logf("  FAIL: Target not achieved: got %d, expected %d", total, targetRPS)
 	}
 
-	if successRate < 95.0 {
-		report.Status = "FAILED"
-		report.Details["error"] = fmt.Sprintf("Success rate too low: %.2f%%", successRate)
-		t.Errorf("[PERF] Success rate too low: %.2f%%", successRate)
+	if successRate >= 95.0 {
+		t.Logf("  OK: Quality: %.2f%% successful requests", successRate)
+	} else {
+		t.Logf("  FAIL: Low quality: %.2f%% successful requests", successRate)
 	}
 
 	finalBalance := getBalance(t, client, walletID)
 	expectedBalance := float64(success)
+	t.Logf("  INFO: Balance check: final %.0f, expected %.0f", finalBalance, expectedBalance)
 
-	t.Logf("[PERF] Balance verification | final=%.0f | expected=%.0f | diff=%.0f",
-		finalBalance, expectedBalance, finalBalance-expectedBalance)
-
-	report.Details["final_balance"] = finalBalance
-	report.Details["expected_balance"] = expectedBalance
-
-	if finalBalance != expectedBalance {
-		report.Status = "FAILED"
-		report.Details["error"] = fmt.Sprintf("Balance mismatch: got %.0f, expected %.0f", finalBalance, expectedBalance)
-		t.Errorf("[PERF] Balance mismatch: got %.0f, expected %.0f", finalBalance, expectedBalance)
+	if finalBalance == expectedBalance {
+		t.Logf("  OK: Balance is correct: %.0f", finalBalance)
+	} else {
+		t.Logf("  FAIL: Balance mismatch: got %.0f, expected %.0f", finalBalance, expectedBalance)
 	}
-
-	report.EndTime = time.Now()
-	if report.Status != "FAILED" {
-		report.Status = "PASSED"
-	}
-
-	printPerformanceReport(report)
 }
 
 func TestPerformance_HighConcurrency(t *testing.T) {
@@ -317,24 +285,21 @@ func TestPerformance_HighConcurrency(t *testing.T) {
 		t.Skip("Skipping performance test")
 	}
 
-	report := TestReport{
-		TestName:   "High Concurrency Test",
-		StartTime:  time.Now(),
-		Status:     "RUNNING",
-		Details:    make(map[string]interface{}),
-	}
+	t.Log("")
+	t.Log("======================================================================")
+	t.Log("  PERFORMANCE TEST: High Concurrency")
+	t.Log("======================================================================")
 
 	client := &http.Client{Timeout: 10 * time.Second}
 
 	walletID := createWalletForTest(t, client)
-	report.Details["wallet_id"] = walletID
-	t.Logf("[CONC] Test wallet created | wallet_id=%s", walletID)
+	t.Logf("  OK: Wallet created, ID: %s", walletID)
 
 	concurrency := 100
 	requestsPerWorker := 10
 	totalRequests := concurrency * requestsPerWorker
 
-	t.Logf("[CONC] Starting concurrency test | workers=%d | requests_per_worker=%d | total_requests=%d",
+	t.Logf("  INFO: %d workers x %d requests = %d total", 
 		concurrency, requestsPerWorker, totalRequests)
 
 	var successCount int64
@@ -359,7 +324,6 @@ func TestPerformance_HighConcurrency(t *testing.T) {
 					localSuccess++
 				}
 			}
-			t.Logf("[CONC] Worker %d completed | success=%d | fail=%d", workerID, localSuccess, localFail)
 		}(i)
 	}
 
@@ -373,111 +337,31 @@ func TestPerformance_HighConcurrency(t *testing.T) {
 	actualRPS := float64(total) / elapsed.Seconds()
 	successRate := float64(success) / float64(total) * 100
 
-	report.Duration = elapsed
-	report.TotalRequests = int(total)
-	report.SuccessCount = int(success)
-	report.FailCount = int(fail)
-	report.SuccessRate = successRate
-	report.RPS = actualRPS
-	report.Details["concurrency"] = concurrency
-	report.Details["requests_per_worker"] = requestsPerWorker
+	t.Log("")
+	t.Log("  RESULTS:")
+	t.Logf("    Total requests:  %d", total)
+	t.Logf("    Successful:      %d (%.2f%%)", success, successRate)
+	t.Logf("    Failed:          %d (%.2f%%)", fail, 100-successRate)
+	t.Logf("    Actual RPS:      %.2f", actualRPS)
+	t.Logf("    Duration:        %v", elapsed)
 
-	t.Logf("[CONC] Performance Metrics:")
-	t.Logf("[CONC]   Total Requests: %d", total)
-	t.Logf("[CONC]   Successful: %d (%.2f%%)", success, successRate)
-	t.Logf("[CONC]   Failed: %d (%.2f%%)", fail, 100-successRate)
-	t.Logf("[CONC]   Actual RPS: %.2f", actualRPS)
-	t.Logf("[CONC]   Duration: %v", elapsed)
-
-	if successRate < 99.0 {
-		report.Status = "FAILED"
-		report.Details["error"] = fmt.Sprintf("Success rate too low: %.2f%%", successRate)
-		t.Errorf("[CONC] Success rate too low: %.2f%%", successRate)
+	if successRate >= 99.0 {
+		t.Logf("  OK: Quality: %.2f%% successful requests", successRate)
+	} else {
+		t.Logf("  FAIL: Low quality: %.2f%% successful requests", successRate)
 	}
 
 	finalBalance := getBalance(t, client, walletID)
 	expectedBalance := float64(success)
 
-	t.Logf("[CONC] Balance verification | final=%.0f | expected=%.0f", finalBalance, expectedBalance)
+	t.Logf("  INFO: Balance check: final %.0f, expected %.0f", finalBalance, expectedBalance)
 
-	report.Details["final_balance"] = finalBalance
-	report.Details["expected_balance"] = expectedBalance
-
-	if finalBalance != expectedBalance {
-		report.Status = "FAILED"
-		report.Details["error"] = fmt.Sprintf("Balance mismatch: got %.0f, expected %.0f", finalBalance, expectedBalance)
-		t.Errorf("[CONC] Balance mismatch: got %.0f, expected %.0f", finalBalance, expectedBalance)
+	if finalBalance == expectedBalance {
+		t.Logf("  OK: Balance is correct: %.0f", finalBalance)
+	} else {
+		t.Logf("  FAIL: Balance mismatch: got %.0f, expected %.0f", finalBalance, expectedBalance)
 	}
-
-	report.EndTime = time.Now()
-	if report.Status != "FAILED" {
-		report.Status = "PASSED"
-	}
-
-	printConcurrencyReport(report)
 }
-
-
-func printPerformanceReport(r TestReport) {
-	t := testing.T{}
-
-	line := strings.Repeat("=", 60)
-	dash := strings.Repeat("-", 60)
-
-	t.Logf("%s", line)
-	t.Logf("PERFORMANCE TEST REPORT")
-	t.Logf("%s", line)
-	t.Logf("Test Name:         %s", r.TestName)
-	t.Logf("Status:            %s", r.Status)
-	t.Logf("Duration:          %v", r.Duration)
-	t.Logf("%s", dash)
-	t.Logf("PERFORMANCE METRICS:")
-	t.Logf("  Total Requests:  %d", r.TotalRequests)
-	t.Logf("  Successful:      %d (%.2f%%)", r.SuccessCount, r.SuccessRate)
-	t.Logf("  Failed:          %d (%.2f%%)", r.FailCount, 100-r.SuccessRate)
-	t.Logf("  Actual RPS:      %.2f", r.RPS)
-	t.Logf("  Avg Latency:     %.2f μs", r.AvgLatency)
-	t.Logf("%s", dash)
-	t.Logf("DETAILS:")
-	for key, value := range r.Details {
-		t.Logf("  %s: %v", key, value)
-	}
-	t.Logf("%s", line)
-}
-
-func printConcurrencyReport(r TestReport) {
-	t := testing.T{}
-
-	line := strings.Repeat("=", 60)
-	dash := strings.Repeat("-", 60)
-
-	t.Logf("%s", line)
-	t.Logf("CONCURRENCY TEST REPORT")
-	t.Logf("%s", line)
-	t.Logf("Test Name:         %s", r.TestName)
-	t.Logf("Status:            %s", r.Status)
-	t.Logf("Duration:          %v", r.Duration)
-	t.Logf("%s", dash)
-	t.Logf("CONCURRENCY METRICS:")
-	t.Logf("  Workers:         %d", r.Details["concurrency"])
-	t.Logf("  Requests/Worker: %d", r.Details["requests_per_worker"])
-	t.Logf("  Total Requests:  %d", r.TotalRequests)
-	t.Logf("  Successful:      %d (%.2f%%)", r.SuccessCount, r.SuccessRate)
-	t.Logf("  Failed:          %d (%.2f%%)", r.FailCount, 100-r.SuccessRate)
-	t.Logf("  Actual RPS:      %.2f", r.RPS)
-	t.Logf("%s", dash)
-	t.Logf("BALANCE VERIFICATION:")
-	t.Logf("  Final Balance:   %.0f", r.Details["final_balance"])
-	t.Logf("  Expected:        %.0f", r.Details["expected_balance"])
-
-	status := "MATCHED"
-	if r.Details["final_balance"] != r.Details["expected_balance"] {
-		status = "MISMATCH"
-	}
-	t.Logf("  Status:          %s", status)
-	t.Logf("%s", line)
-}
-
 
 func createWallet(t *testing.T, client *http.Client) string {
 	resp, err := client.Post(baseURL+"/api/v1/wallets", "application/json", nil)

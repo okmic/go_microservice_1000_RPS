@@ -34,7 +34,7 @@ func Load() *Config {
     }
 
     return &Config{
-        AppPort: getEnv("APP_PORT", "8080"),
+        AppPort: getEnv("APP_PORT", "9999"),
         AppEnv:  getEnv("APP_ENV", "development"),
 
         DBHost:            getEnv("DB_HOST", "localhost"),

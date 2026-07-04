@@ -74,7 +74,9 @@ func main() {
 
 func setupDatabase(cfg *config.Config) (*gorm.DB, error) {
     gormConfig := &gorm.Config{
-        Logger: logger.Default.LogMode(logger.Info),
+        Logger: logger.Default.LogMode(logger.Silent),
+        SkipDefaultTransaction: true,
+        PrepareStmt: true,
     }
 
     db, err := gorm.Open(postgres.Open(cfg.GetDBDSN()), gormConfig)
