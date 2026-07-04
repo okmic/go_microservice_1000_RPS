@@ -1,4 +1,4 @@
-<h1 align="center">Go Microservice · 1000 RPS</h1>
+<h1 align="center">Go Microservice · ~1000 RPS (FOR UPDATE)</h1>
 
 <p>
   RESTful сервис управления кошельками на Go с использованием Gin, GORM и PostgreSQL.
